@@ -22,7 +22,6 @@ import traceback
 import django
 import django.conf
 from django.db import connection
-from django.utils.deprecation import MiddlewareMixin
 from google.rpc import code_pb2
 
 from opencensus.common import configuration
@@ -143,11 +142,11 @@ def _trace_db_call(execute, sql, params, many, context):
         tracer.end_span()
 
 
-class OpencensusMiddleware(MiddlewareMixin):
+class OpencensusMiddleware(object):
     """Saves the request in thread local"""
 
     def __init__(self, get_response):
-        super(OpencensusMiddleware, self).__init__(get_response)
+        self.get_response = get_response
         settings = getattr(django.conf.settings, 'OPENCENSUS', {})
         settings = settings.get('TRACE', {})
 
@@ -175,6 +174,15 @@ class OpencensusMiddleware(MiddlewareMixin):
 
         # pylint: disable=protected-access
         integrations.add_integration(integrations._Integrations.DJANGO)
+
+    def __call__(self, request):
+        self.process_request(request)
+
+        response = self.get_response(request)
+
+        self.process_response(request, response)
+
+        return response
 
     def process_request(self, request):
         """Called on each request, before Django decides which view to execute.
